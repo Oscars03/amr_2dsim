@@ -12,7 +12,7 @@ To run this simulator, please ensure you have the following installed on **Ubunt
 * **ROSbridge Suite**
 ```bash
 sudo apt install ros-<distro>-rosbridge-suite
-
+sudo apt install git
 ```
 
 
