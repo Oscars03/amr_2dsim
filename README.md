@@ -33,7 +33,10 @@ git clone https://github.com/Oscars03/amr_2dsim.git
 ```bash
 cd ~/robot_ws
 colcon build --symlink-install
-source install/setup.bash
+```
+```bash
+echo "source ~/robot_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ---
