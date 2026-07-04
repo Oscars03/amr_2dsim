@@ -60,14 +60,9 @@ source ~/.bashrc
 
 # ติดตั้งและใช้งาน Node.js
 nvm install 24
-nvm use 24
 
 # ติดตั้ง dependencies
 npm install
-
-# ตั้งค่าสิทธิ์ Sandbox ให้กับ Electron
-sudo chown root:root node_modules/electron/dist/chrome-sandbox
-sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 ```
 
