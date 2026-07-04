@@ -56,15 +56,12 @@ cd amr-sim-dashboard
 ติดตั้ง Node.js ผ่าน `nvm`, ติดตั้งแพ็กเกจ และตั้งค่าสิทธิ์ Sandbox:
 
 ```bash
-# ติดตั้ง nvm
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 source ~/.bashrc
 
-# ติดตั้งและใช้งาน Node.js
 nvm install 24
 ```
 ```bash
-# ติดตั้ง dependencies
 npm install electron-vite --save-dev
 npx electron --version
 ```
