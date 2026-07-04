@@ -79,7 +79,6 @@ source ~/robot_ws/install/setup.bash
 
 2. **Start Dashboard:**
 ```bash
-cd ~/amr-sim-dashboard
 npm run dev
 
 ```
