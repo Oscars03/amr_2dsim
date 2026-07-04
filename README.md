@@ -62,7 +62,7 @@ source ~/.bashrc
 nvm install 24
 
 # ติดตั้ง dependencies
-npm install
+sudo npm install electron --save-dev --unsafe-perm=true --allow-root
 
 ```
 
