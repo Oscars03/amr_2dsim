@@ -65,8 +65,12 @@ nvm install 24
 ```
 ```bash
 # ติดตั้ง dependencies
-sudo npm install electron --save-dev --unsafe-perm=true --allow-root
-
+npm install electron-vite --save-dev
+npx electron --version
+```
+```bash
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
 ---
