@@ -35,6 +35,7 @@ cd ~/robot_ws
 colcon build --symlink-install
 ```
 ```bash
+cd
 echo "source ~/robot_ws/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
