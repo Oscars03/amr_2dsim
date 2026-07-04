@@ -43,7 +43,7 @@ source install/setup.bash
 Dashboard สำหรับการควบคุมและแสดงผลการจำลองหุ่นยนต์ พัฒนาด้วย React, Vite และ Electron
 
 ### 2.1 Clone the Repository
-
+เปิด Terminal ใหม่
 ```bash
 cd
 git clone https://github.com/Oscars03/amr-sim-dashboard.git
