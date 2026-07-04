@@ -29,8 +29,6 @@ cd ~/robot_ws/src
 
 ```bash
 git clone https://github.com/Oscars03/amr_2dsim.git
-```
-```bash
 cd ~/robot_ws
 colcon build --symlink-install
 ```
