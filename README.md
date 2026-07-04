@@ -11,7 +11,7 @@ To run this simulator, please ensure you have the following installed on **Ubunt
 * **Node.js 18+** & **npm** (for the Web Dashboard)
 * **ROSbridge Suite**
 ```bash
-sudo apt install ros-<distro>-rosbridge-suite
+sudo apt install ros-jazzy-rosbridge-suite
 sudo apt install git
 ```
 
