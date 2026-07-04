@@ -1,27 +1,26 @@
-# AMR 2D Simulator
+# AMR 2D Simulator & Dashboard
 
-This is a lightweight ROS 2 simulation environment designed for autonomous mobile robot navigation, featuring real-time visualization, map management, and keyboard teleoperation.
+ชุดเครื่องมือสำหรับการจำลองและควบคุมหุ่นยนต์ (Autonomous Mobile Robot) ประกอบด้วยตัวจำลองใน ROS 2 และ Dashboard สำหรับการควบคุมผ่านเว็บเบราว์เซอร์
 
 ## Required Software
 
-To run this simulator, please ensure you have the following installed on **Ubuntu 24.04 (Noble)** or **22.04 (Jammy)**:
+ตรวจสอบให้แน่ใจว่าคุณได้ติดตั้งซอฟต์แวร์เหล่านี้บน **Ubuntu 24.04 (Noble)** หรือ **22.04 (Jammy)**:
 
-* **ROS 2 Jazzy** (or Humble/Foxy)
+* **ROS 2 Jazzy**
 * **Python 3.10+**
-* **Node.js 18+** & **npm** (for the Web Dashboard)
+* **Node.js 24+** & **npm**
 * **ROSbridge Suite**
+
 ```bash
-sudo apt install ros-jazzy-rosbridge-suite
-sudo apt install git
+sudo apt install ros-jazzy-rosbridge-suite git
+
 ```
 
+---
 
+## 1. Simulator Installation (ROS 2 Package)
 
-## Installation Instructions
-
-### 1. Create your ROS 2 Workspace
-
-Open your terminal and create a workspace directory:
+### 1.1 Create ROS 2 Workspace
 
 ```bash
 mkdir -p ~/robot_ws/src
@@ -29,27 +28,77 @@ cd ~/robot_ws/src
 
 ```
 
-### 2. Clone the Repository
-
-Clone this package into your `src` folder:
+### 1.2 Clone and Build
 
 ```bash
 git clone https://github.com/Oscars03/amr_2dsim.git
-
-```
-
-### 3. Build the Package
-
-Return to the workspace root and build the project:
-
-```bash
 cd ~/robot_ws
 colcon build --symlink-install
 source install/setup.bash
 
 ```
 
+---
+
+## 2. Dashboard Installation
+
+Dashboard สำหรับการควบคุมและแสดงผลการจำลองหุ่นยนต์ พัฒนาด้วย React, Vite และ Electron
+
+### 2.1 Clone the Repository
+
+```bash
+git clone https://github.com/Oscars03/amr-sim-dashboard.git
+cd amr-sim-dashboard
+
+```
+
+### 2.2 Install Dependencies & Setup Permissions
+
+ติดตั้ง Node.js ผ่าน `nvm`, ติดตั้งแพ็กเกจ และตั้งค่าสิทธิ์ Sandbox:
+
+```bash
+# ติดตั้ง nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
+source ~/.bashrc
+
+# ติดตั้งและใช้งาน Node.js
+nvm install 24
+nvm use 24
+
+# ติดตั้ง dependencies
+npm install
+
+# ตั้งค่าสิทธิ์ Sandbox ให้กับ Electron
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+
+```
+
+---
+
+## 3. How to Run
+
+1. **Start ROS 2 Environment:**
+```bash
+source ~/robot_ws/install/setup.bash
+
+```
 
 
+2. **Start Dashboard:**
+```bash
+cd ~/amr-sim-dashboard
+npm run dev
+
+```
+
+
+
+## Project Links
+
+* **Simulator:** [https://github.com/Oscars03/amr_2dsim](https://github.com/Oscars03/amr_2dsim)
+* **Dashboard:** [https://github.com/Oscars03/amr-sim-dashboard](https://github.com/Oscars03/amr-sim-dashboard)
+
+---
 
 *Developed by Phuthanet Phengphan*
