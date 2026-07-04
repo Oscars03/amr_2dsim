@@ -100,5 +100,3 @@ npm run dev
 * **Dashboard:** [https://github.com/Oscars03/amr-sim-dashboard](https://github.com/Oscars03/amr-sim-dashboard)
 
 ---
-
-*Developed by Phuthanet Phengphan*
