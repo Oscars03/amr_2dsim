@@ -8,13 +8,45 @@ from nav_msgs.msg import Odometry
 import math
 import time
 import json
+import numpy as np
+import xml.etree.ElementTree as ET
 
 class AmrSimulator(Node):
     def __init__(self):
         super().__init__('amr_2sim')
         
         self.declare_parameter('map_file', '')
+        self.declare_parameter('urdf_file', '')
+        
         map_file_path = self.get_parameter('map_file').value
+        urdf_file_path = self.get_parameter('urdf_file').value
+        
+        # Default Kinematic values
+        self.kinematic_model = 'diff_drive'
+        self.wheel_base = 0.5
+        self.ticks_per_meter = 1000.0
+        self.robot_radius = 0.35
+        self.laser_range_max = 12.0
+
+        if urdf_file_path:
+            try:
+                tree = ET.parse(urdf_file_path)
+                root = tree.getroot()
+                sim_cfg = root.find('amr_sim_config')
+                if sim_cfg is not None:
+                    if sim_cfg.find('kinematic_model') is not None:
+                        self.kinematic_model = sim_cfg.find('kinematic_model').text.strip()
+                    if sim_cfg.find('wheel_base') is not None:
+                        self.wheel_base = float(sim_cfg.find('wheel_base').text)
+                    if sim_cfg.find('robot_radius') is not None:
+                        self.robot_radius = float(sim_cfg.find('robot_radius').text)
+                    if sim_cfg.find('laser_range_max') is not None:
+                        self.laser_range_max = float(sim_cfg.find('laser_range_max').text)
+                    if sim_cfg.find('ticks_per_meter') is not None:
+                        self.ticks_per_meter = float(sim_cfg.find('ticks_per_meter').text)
+                self.get_logger().info(f"Loaded config from URDF: model={self.kinematic_model}")
+            except Exception as e:
+                self.get_logger().error(f"Failed to load URDF config: {e}")
 
         self.pose = {'x': 0.0, 'y': 0.0, 'theta': 0.0}
         self.walls = []
@@ -39,12 +71,14 @@ class AmrSimulator(Node):
                 ((-5.0, -5.0), (5.0, -5.0))
             ]
 
-        self.cmd_vel = {'v': 0.0, 'w': 0.0}
+        # Convert walls to numpy arrays for vectorized raycasting
+        self.wall_x3 = np.array([w[0][0] for w in self.walls])
+        self.wall_y3 = np.array([w[0][1] for w in self.walls])
+        self.wall_x4 = np.array([w[1][0] for w in self.walls])
+        self.wall_y4 = np.array([w[1][1] for w in self.walls])
+
+        self.cmd_vel = {'vx': 0.0, 'vy': 0.0, 'w': 0.0}
         self.last_time = time.time()
-        
-        # พารามิเตอร์จำลองล้อหุ่นยนต์ (Robot Kinematics)
-        self.wheel_base = 0.5         
-        self.ticks_per_meter = 1000.0 
 
         # ----------------------------------------------------
         # 1. เพิ่มตัวแปรสำหรับเก็บค่า Encoder สะสม (Cumulative Pulses)
@@ -52,19 +86,21 @@ class AmrSimulator(Node):
         self.total_pulse_left = 0.0
         self.total_pulse_right = 0.0
 
-        self.cmd_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_callback, 10)
-        self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
-        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
         
+        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
+        self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
         self.encoder_pub = self.create_publisher(String, '/wheel/encoder', 10)
+        self.sub_cmd = self.create_subscription(Twist, '/cmd_vel', self.cmd_callback, 10)
+        
         self.wheel_vel_pub = self.create_publisher(Twist, '/wheel/vel', 10)
         self.imu_pub = self.create_publisher(Imu, '/imu/data', 10)
 
         self.timer = self.create_timer(0.05, self.timer_callback)
         
     def cmd_callback(self, msg):
-        self.cmd_vel['v'] = msg.linear.x
+        self.cmd_vel['vx'] = msg.linear.x
+        self.cmd_vel['vy'] = msg.linear.y
         self.cmd_vel['w'] = msg.angular.z
 
     def timer_callback(self):
@@ -76,32 +112,55 @@ class AmrSimulator(Node):
             
         self.last_time = current_time
 
-        new_theta = self.pose['theta'] + (self.cmd_vel['w'] * dt)
-        new_x = self.pose['x'] + (self.cmd_vel['v'] * dt * math.cos(new_theta))
-        new_y = self.pose['y'] + (self.cmd_vel['v'] * dt * math.sin(new_theta))
+        vx = self.cmd_vel['vx']
+        vy = self.cmd_vel['vy']
+        w = self.cmd_vel['w']
+
+        # Determine robot velocities based on kinematic model
+        if self.kinematic_model == 'diff_drive':
+            vy = 0.0 # Diff drive cannot move sideways
+        elif self.kinematic_model == 'ackermann':
+            vy = 0.0 # Car cannot move sideways
+            # For a basic ackermann, w = vx / wheelbase * tan(steering_angle)
+            # Here we just assume w is already constrained or derived, or we just use it directly.
+        
+        # Integrate Position (Global Frame)
+        new_theta = self.pose['theta'] + (w * dt)
+        
+        # Rotate local vx, vy to global frame
+        v_global_x = vx * math.cos(new_theta) - vy * math.sin(new_theta)
+        v_global_y = vx * math.sin(new_theta) + vy * math.cos(new_theta)
+
+        new_x = self.pose['x'] + (v_global_x * dt)
+        new_y = self.pose['y'] + (v_global_y * dt)
 
         if not self.check_collision(new_x, new_y):
             self.pose['x'] = new_x
             self.pose['y'] = new_y
         else:
-            self.get_logger().warn("Collision Detected! Stopped translation.", throttle_duration_sec=1.0)
+            # Try sliding along X or Y
+            if not self.check_collision(new_x, self.pose['y']):
+                self.pose['x'] = new_x
+                self.get_logger().warn("Collision! Sliding along X.", throttle_duration_sec=1.0)
+            elif not self.check_collision(self.pose['x'], new_y):
+                self.pose['y'] = new_y
+                self.get_logger().warn("Collision! Sliding along Y.", throttle_duration_sec=1.0)
+            else:
+                self.get_logger().warn("Collision Detected! Stopped translation.", throttle_duration_sec=1.0)
             
         self.pose['theta'] = new_theta
 
         # ----------------------------------------------------
-        # จำลองการทำงานของ Encoder แบบสะสม (Cumulative)
+        # Simulate Fake Encoder (approximated for all models to a differential equivalent for visualization)
         # ----------------------------------------------------
-        v = self.cmd_vel['v']
-        w = self.cmd_vel['w']
+        v_right = vx + (w * self.wheel_base / 2.0)
+        v_left = vx - (w * self.wheel_base / 2.0)
         
-        v_right = v + (w * self.wheel_base / 2.0)
-        v_left = v - (w * self.wheel_base / 2.0)
-        
-        # คำนวณระยะ pulse ย่อยในรอบนี้ (เก็บเป็น float เพื่อป้องกันค่าผิดเพี้ยนจากการปัดเศษทิ้ง)
+        # Calculate pulse increments
         delta_pulse_right = v_right * dt * self.ticks_per_meter
         delta_pulse_left = v_left * dt * self.ticks_per_meter
         
-        # 2. บวกสะสมเข้าไปในตัวแปรรวม
+        # Accumulate pulses
         self.total_pulse_right += delta_pulse_right
         self.total_pulse_left += delta_pulse_left
         
@@ -125,20 +184,20 @@ class AmrSimulator(Node):
     def get_ray_intersection(self, x, y, angle, range_max):
         x2 = x + range_max * math.cos(angle)
         y2 = y + range_max * math.sin(angle)
-        min_dist = float('inf')
-        for wall in self.walls:
-            x3, y3 = wall[0]
-            x4, y4 = wall[1]
-            den = (x - x2) * (y3 - y4) - (y - y2) * (x3 - x4)
-            if den == 0:
-                continue 
-            t = ((x - x3) * (y3 - y4) - (y - y3) * (x3 - x4)) / den
-            u = -((x - x2) * (y - y3) - (y - y2) * (x - x3)) / den
-            if 0 <= t <= 1 and 0 <= u <= 1:
-                dist = t * range_max
-                if dist < min_dist:
-                    min_dist = dist
-        return min_dist
+        
+        den = (x - x2) * (self.wall_y3 - self.wall_y4) - (y - y2) * (self.wall_x3 - self.wall_x4)
+        valid = np.abs(den) > 1e-6
+        
+        t = np.full(len(self.walls), np.inf)
+        u = np.full(len(self.walls), np.inf)
+        
+        t[valid] = ((x - self.wall_x3[valid]) * (self.wall_y3[valid] - self.wall_y4[valid]) - (y - self.wall_y3[valid]) * (self.wall_x3[valid] - self.wall_x4[valid])) / den[valid]
+        u[valid] = -((x - x2) * (y - self.wall_y3[valid]) - (y - y2) * (x - self.wall_x3[valid])) / den[valid]
+        
+        intersect = (t >= 0) & (t <= 1) & (u >= 0) & (u <= 1)
+        if np.any(intersect):
+            return float(np.min(t[intersect]) * range_max)
+        return float('inf')
 
     def publish_encoder(self, left_pulse, right_pulse):
         msg = String()
@@ -190,7 +249,10 @@ class AmrSimulator(Node):
         scan.angle_min = 0.0
         scan.angle_max = 2 * math.pi
         scan.angle_increment = math.radians(1.0) 
-        scan.range_max = 12.0
+        scan.range_min = 0.05
+        scan.range_max = self.laser_range_max
+        scan.scan_time = 0.05
+        scan.time_increment = 0.05 / 360.0
         
         ranges = []
         intensities = []
@@ -218,7 +280,8 @@ class AmrSimulator(Node):
         
         odom.pose.covariance = [0.01 if i == j else 0.0 for i in range(6) for j in range(6)]
         
-        odom.twist.twist.linear.x = self.cmd_vel['v']
+        odom.twist.twist.linear.x = self.cmd_vel['vx']
+        odom.twist.twist.linear.y = self.cmd_vel['vy']
         odom.twist.twist.angular.z = self.cmd_vel['w']
         
         odom.twist.covariance = [0.01 if i == j else 0.0 for i in range(6) for j in range(6)]
@@ -226,7 +289,6 @@ class AmrSimulator(Node):
         self.odom_pub.publish(odom)
 
     def check_collision(self, new_x, new_y):
-        robot_radius = 0.35  
         for wall in self.walls:
             x1, y1 = wall[0]
             x2, y2 = wall[1]
@@ -242,7 +304,7 @@ class AmrSimulator(Node):
                 closest_x = x1 + t * dx
                 closest_y = y1 + t * dy
             dist_sq = (new_x - closest_x)**2 + (new_y - closest_y)**2
-            if dist_sq < robot_radius**2:
+            if dist_sq < self.robot_radius**2:
                 return True 
         return False
 

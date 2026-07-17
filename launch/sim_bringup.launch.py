@@ -59,13 +59,14 @@ def generate_launch_description():
             executable = 'amr_sim_node',
             name       = 'amr_simulator',
             output     = 'screen',
-            parameters = [{'map_file': world_path}],
+            parameters = [{'map_file': world_path, 'urdf_file': urdf_path}],
         )
 
-        rosbridge = ExecuteProcess(
-            cmd    = ['ros2', 'launch', 'rosbridge_server',
-                      'rosbridge_websocket_launch.xml'],
-            output = 'screen',
+        rosbridge = Node(
+            package    = 'rosbridge_server',
+            executable = 'rosbridge_websocket',
+            name       = 'rosbridge_websocket',
+            output     = 'screen',
         )
 
         # ── NO map-server here ───────────────────────────────────────────────
