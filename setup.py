@@ -6,7 +6,7 @@ package_name = 'amr_2dsim'
 
 setup(
     name=package_name,
-    version='0.2.0',
+    version='0.2.1',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -16,9 +16,8 @@ setup(
         (os.path.join('share', package_name, 'urdf'), glob(os.path.join('urdf', '*.urdf'))),
         (os.path.join('share', package_name, 'rviz'), glob(os.path.join('rviz', '*.rviz'))),
         (os.path.join('share', package_name, 'worlds'), glob(os.path.join('worlds', '*.json'))),
-        (os.path.join('share', package_name, 'config'), glob(os.path.join('config', '*.yaml'))),
-        (os.path.join('share', package_name, 'maps'), glob(os.path.join('maps', '*.yaml'))),
-        (os.path.join('share', package_name, 'maps'),glob(os.path.join('maps', '*.png'))),
+        (os.path.join('share', package_name, 'maps'), glob('maps/*')),
+        (os.path.join('share', package_name, 'config'), glob('config/*')),
 
     ],
     install_requires=['setuptools'],

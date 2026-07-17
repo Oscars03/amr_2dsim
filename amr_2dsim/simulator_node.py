@@ -27,6 +27,10 @@ class AmrSimulator(Node):
         self.ticks_per_meter = 1000.0
         self.robot_radius = 0.35
         self.laser_range_max = 12.0
+        
+        self.laser_offset_x = 0.0
+        self.laser_offset_y = 0.0
+        self.laser_frame_id = 'laser_link'
 
         if urdf_file_path:
             try:
@@ -45,6 +49,21 @@ class AmrSimulator(Node):
                     if sim_cfg.find('ticks_per_meter') is not None:
                         self.ticks_per_meter = float(sim_cfg.find('ticks_per_meter').text)
                 self.get_logger().info(f"Loaded config from URDF: model={self.kinematic_model}")
+                
+                for joint in root.findall('joint'):
+                    child = joint.find('child')
+                    if child is not None:
+                        link_name = child.get('link', '')
+                        if 'laser' in link_name or 'lidar' in link_name:
+                            self.laser_frame_id = link_name
+                            origin = joint.find('origin')
+                            if origin is not None and origin.get('xyz'):
+                                xyz = origin.get('xyz').split()
+                                if len(xyz) >= 2:
+                                    self.laser_offset_x = float(xyz[0])
+                                    self.laser_offset_y = float(xyz[1])
+                            self.get_logger().info(f"Loaded laser config: frame={self.laser_frame_id}, offset=({self.laser_offset_x}, {self.laser_offset_y})")
+                            break
             except Exception as e:
                 self.get_logger().error(f"Failed to load URDF config: {e}")
 
@@ -245,7 +264,7 @@ class AmrSimulator(Node):
     def publish_scan(self):
         scan = LaserScan()
         scan.header.stamp = self.stamp
-        scan.header.frame_id = 'laser_link'
+        scan.header.frame_id = self.laser_frame_id
         scan.angle_min = 0.0
         scan.angle_max = 2 * math.pi
         scan.angle_increment = math.radians(1.0) 
@@ -254,11 +273,15 @@ class AmrSimulator(Node):
         scan.scan_time = 0.05
         scan.time_increment = 0.05 / 360.0
         
+        # ponytail: dynamic laser offset based on URDF to fix map swinging
+        laser_x = self.pose['x'] + self.laser_offset_x * math.cos(self.pose['theta']) - self.laser_offset_y * math.sin(self.pose['theta'])
+        laser_y = self.pose['y'] + self.laser_offset_x * math.sin(self.pose['theta']) + self.laser_offset_y * math.cos(self.pose['theta'])
+
         ranges = []
         intensities = []
         for i in range(360):
             laser_angle = self.pose['theta'] + (i * scan.angle_increment)
-            dist = self.get_ray_intersection(self.pose['x'], self.pose['y'], laser_angle, scan.range_max)
+            dist = self.get_ray_intersection(laser_x, laser_y, laser_angle, scan.range_max)
             ranges.append(dist) 
             intensities.append(1.0)
         

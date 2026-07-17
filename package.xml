@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>amr_2dsim</name>
-  <version>0.2.0</version>
-  <description>2D lightweight AMR simulation using standard map/URDF files</description>
-  <maintainer email="phutanate@todo.todo">phutanate</maintainer>
-  <license>TODO: License declaration</license>
+  <version>0.2.1</version>
+  <description>2D AMR simulation</description>
+  <maintainer email="osears.55@gmail.com">phutanate</maintainer>
+  <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
