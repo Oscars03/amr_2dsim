@@ -10,6 +10,122 @@ import time
 import json
 import numpy as np
 import xml.etree.ElementTree as ET
+import logging
+
+_DEFAULTS = {
+    'kinematic_model': 'diff_drive',
+    'wheel_base': 0.5,
+    'robot_radius': 0.35,
+    'laser_range_max': 12.0,
+    'ticks_per_meter': 1000.0,
+    'drive_axle_x': None,  # None = not declared in URDF (skip check)
+}
+
+def _get_float(elem, tag, default, warn_cb=None):
+    """Parse a single float field from XML element; return default on any error."""
+    child = elem.find(tag)
+    if child is None or not (child.text or '').strip():
+        return default
+    try:
+        return float(child.text.strip())
+    except (ValueError, AttributeError) as e:
+        if warn_cb:
+            warn_cb(f"amr_sim_config: cannot parse <{tag}>: {e}, using default {default}")
+        return default
+
+def parse_sim_config(urdf_path: str) -> dict:
+    """Parse <amr_sim_config> from URDF; returns dict with defaults for missing/invalid fields."""
+    cfg = dict(_DEFAULTS)
+    try:
+        root = ET.parse(urdf_path).getroot()
+        sim_cfg = root.find('amr_sim_config')
+        if sim_cfg is None:
+            return cfg
+        # kinematic_model (string)
+        km = sim_cfg.find('kinematic_model')
+        if km is not None and (km.text or '').strip():
+            cfg['kinematic_model'] = km.text.strip()
+        # numeric fields — each isolated so one bad value doesn't block others
+        for field in ('wheel_base', 'robot_radius', 'laser_range_max', 'ticks_per_meter'):
+            cfg[field] = _get_float(sim_cfg, field, cfg[field])
+        # drive_axle_x: optional; keep None if absent (means "skip convention check")
+        ax_elem = sim_cfg.find('drive_axle_x')
+        if ax_elem is not None and (ax_elem.text or '').strip():
+            try:
+                cfg['drive_axle_x'] = float(ax_elem.text.strip())
+            except ValueError:
+                pass
+    except Exception as e:
+        logging.warning(f"parse_sim_config: failed to read '{urdf_path}': {e}")
+    return cfg
+
+
+def _check_drive_axle_convention(root: ET.Element, declared_axle_x, warn_cb, info_cb) -> None:
+    """
+    Verify that joints declared as drive wheels actually sit at declared_axle_x
+    in the base_link frame.  Issues a WARNING (not an error) if they don't so
+    that misconfigured robots are caught early without breaking the sim.
+
+    Detection heuristic (covers standard ROS naming):
+      - joint type="continuous" whose child link name contains 'wheel'
+        AND (joint name or child name) contains 'front' OR 'drive'
+      - Fallback: if <ros2_control> has <command_interface name="velocity">
+        joints — those are the actuated wheels.
+    ponytail: heuristic covers 95% of real robots; exotic naming needs explicit
+              drive_axle_x tag. Upgrade: add a <drive_joints> tag to amr_sim_config.
+    """
+    if declared_axle_x is None:
+        return  # user did not declare drive_axle_x → skip silently
+
+    # Collect candidate drive joint names from ros2_control (most reliable)
+    ros2_drive_joints = set()
+    for rc in root.findall('ros2_control'):
+        for joint in rc.findall('joint'):
+            if joint.find('command_interface[@name="velocity"]') is not None:
+                ros2_drive_joints.add(joint.get('name', ''))
+
+    offenders = []
+    for joint in root.findall('joint'):
+        if joint.get('type') != 'continuous':
+            continue
+        jname = joint.get('name', '')
+        child = joint.find('child')
+        cname = child.get('link', '') if child is not None else ''
+
+        # Is this a drive wheel? ros2_control list wins; fallback to name heuristic
+        is_drive = (
+            jname in ros2_drive_joints
+            or (
+                'wheel' in cname
+                and ('front' in jname or 'drive' in jname or 'front' in cname)
+            )
+        )
+        if not is_drive:
+            continue
+
+        origin = joint.find('origin')
+        if origin is None or not origin.get('xyz'):
+            continue
+        xyz = origin.get('xyz').split()
+        if len(xyz) < 1:
+            continue
+        actual_x = float(xyz[0])
+        if abs(actual_x - declared_axle_x) > 1e-4:
+            offenders.append((jname, actual_x))
+
+    if offenders:
+        for jname, ax in offenders:
+            warn_cb(
+                f"URDF convention violation: joint '{jname}' drive wheel is at "
+                f"x={ax:.4f} in base_link frame, but <drive_axle_x> declares "
+                f"x={declared_axle_x:.4f}.  ICC will be offset by "
+                f"{ax - declared_axle_x:.4f} m — odometry will drift."
+            )
+    else:
+        info_cb(
+            f"Drive-axle convention OK: all drive wheels at x={declared_axle_x:.4f} "
+            "(matches <drive_axle_x> declaration)."
+        )
 
 class AmrSimulator(Node):
     def __init__(self):
@@ -21,35 +137,25 @@ class AmrSimulator(Node):
         map_file_path = self.get_parameter('map_file').value
         urdf_file_path = self.get_parameter('urdf_file').value
         
-        # Default Kinematic values
-        self.kinematic_model = 'diff_drive'
-        self.wheel_base = 0.5
-        self.ticks_per_meter = 1000.0
-        self.robot_radius = 0.35
-        self.laser_range_max = 12.0
-        
+        # Load kinematic config from URDF (or defaults if tag absent)
         self.laser_offset_x = 0.0
         self.laser_offset_y = 0.0
         self.laser_frame_id = 'laser_link'
 
         if urdf_file_path:
+            cfg = parse_sim_config(urdf_file_path)
+            self.kinematic_model = cfg['kinematic_model']
+            self.wheel_base      = cfg['wheel_base']
+            self.robot_radius    = cfg['robot_radius']
+            self.laser_range_max = cfg['laser_range_max']
+            self.ticks_per_meter = cfg['ticks_per_meter']
+            self.get_logger().info(
+                f"Loaded config from URDF: model={self.kinematic_model} "
+                f"wheel_base={self.wheel_base} robot_radius={self.robot_radius}"
+            )
+            # laser joint offset + drive-axle convention check
             try:
-                tree = ET.parse(urdf_file_path)
-                root = tree.getroot()
-                sim_cfg = root.find('amr_sim_config')
-                if sim_cfg is not None:
-                    if sim_cfg.find('kinematic_model') is not None:
-                        self.kinematic_model = sim_cfg.find('kinematic_model').text.strip()
-                    if sim_cfg.find('wheel_base') is not None:
-                        self.wheel_base = float(sim_cfg.find('wheel_base').text)
-                    if sim_cfg.find('robot_radius') is not None:
-                        self.robot_radius = float(sim_cfg.find('robot_radius').text)
-                    if sim_cfg.find('laser_range_max') is not None:
-                        self.laser_range_max = float(sim_cfg.find('laser_range_max').text)
-                    if sim_cfg.find('ticks_per_meter') is not None:
-                        self.ticks_per_meter = float(sim_cfg.find('ticks_per_meter').text)
-                self.get_logger().info(f"Loaded config from URDF: model={self.kinematic_model}")
-                
+                root = ET.parse(urdf_file_path).getroot()
                 for joint in root.findall('joint'):
                     child = joint.find('child')
                     if child is not None:
@@ -62,10 +168,25 @@ class AmrSimulator(Node):
                                 if len(xyz) >= 2:
                                     self.laser_offset_x = float(xyz[0])
                                     self.laser_offset_y = float(xyz[1])
-                            self.get_logger().info(f"Loaded laser config: frame={self.laser_frame_id}, offset=({self.laser_offset_x}, {self.laser_offset_y})")
+                            self.get_logger().info(
+                                f"Loaded laser config: frame={self.laser_frame_id}, "
+                                f"offset=({self.laser_offset_x}, {self.laser_offset_y})"
+                            )
                             break
+                _check_drive_axle_convention(
+                    root,
+                    cfg['drive_axle_x'],
+                    self.get_logger().warning,
+                    self.get_logger().info,
+                )
             except Exception as e:
-                self.get_logger().error(f"Failed to load URDF config: {e}")
+                self.get_logger().error(f"Failed to load laser joint from URDF: {e}")
+        else:
+            self.kinematic_model = _DEFAULTS['kinematic_model']
+            self.wheel_base      = _DEFAULTS['wheel_base']
+            self.robot_radius    = _DEFAULTS['robot_radius']
+            self.laser_range_max = _DEFAULTS['laser_range_max']
+            self.ticks_per_meter = _DEFAULTS['ticks_per_meter']
 
         self.pose = {'x': 0.0, 'y': 0.0, 'theta': 0.0}
         self.walls = []
@@ -143,12 +264,13 @@ class AmrSimulator(Node):
             # For a basic ackermann, w = vx / wheelbase * tan(steering_angle)
             # Here we just assume w is already constrained or derived, or we just use it directly.
         
-        # Integrate Position (Global Frame)
+        # Integrate Position (Global Frame) ด้วยสมการ Midpoint 
+        mid_theta = self.pose['theta'] + (w * dt / 2.0)
         new_theta = self.pose['theta'] + (w * dt)
         
-        # Rotate local vx, vy to global frame
-        v_global_x = vx * math.cos(new_theta) - vy * math.sin(new_theta)
-        v_global_y = vx * math.sin(new_theta) + vy * math.cos(new_theta)
+        # Rotate local vx, vy to global frame (ใช้มุมค่ากลางเพื่อความแม่นยำตอนเข้าโค้ง)
+        v_global_x = vx * math.cos(mid_theta) - vy * math.sin(mid_theta)
+        v_global_y = vx * math.sin(mid_theta) + vy * math.cos(mid_theta)
 
         new_x = self.pose['x'] + (v_global_x * dt)
         new_y = self.pose['y'] + (v_global_y * dt)
@@ -244,8 +366,8 @@ class AmrSimulator(Node):
         msg.linear_acceleration.z = 9.81
         
         msg.orientation_covariance[0] = -1.0 
-        msg.angular_velocity_covariance[0] = 0.01
-        msg.linear_acceleration_covariance[0] = 0.01
+        msg.angular_velocity_covariance[0] = 0.0001
+        msg.linear_acceleration_covariance[0] = 0.0001
         
         self.imu_pub.publish(msg)
 
@@ -301,13 +423,31 @@ class AmrSimulator(Node):
         odom.pose.pose.orientation.z = math.sin(self.pose['theta'] / 2.0)
         odom.pose.pose.orientation.w = math.cos(self.pose['theta'] / 2.0)
         
-        odom.pose.covariance = [0.01 if i == j else 0.0 for i in range(6) for j in range(6)]
+        # 1. Pose Covariance (Global 'odom' frame)
+        # ความคลาดเคลื่อนตำแหน่งโลก (Global) ต้องสะสมและเพิ่มขึ้นทั้งแกน X และ Y
+        pose_cov = [0.0] * 36
+        pose_cov[0]  = 0.01  # Global X
+        pose_cov[7]  = 0.01  # Global Y (แก้ตรงนี้: ห้ามเป็น 1e-5 เด็ดขาด)
+        pose_cov[14] = 1e-5  # Global Z
+        pose_cov[21] = 1e-5  # Roll
+        pose_cov[28] = 1e-5  # Pitch
+        pose_cov[35] = 0.01  # Yaw
+        odom.pose.covariance = pose_cov
         
         odom.twist.twist.linear.x = self.cmd_vel['vx']
-        odom.twist.twist.linear.y = self.cmd_vel['vy']
+        odom.twist.twist.linear.y = 0.0 if self.kinematic_model == 'diff_drive' else self.cmd_vel['vy']
         odom.twist.twist.angular.z = self.cmd_vel['w']
         
-        odom.twist.covariance = [0.01 if i == j else 0.0 for i in range(6) for j in range(6)]
+        # 2. Twist Covariance (Local 'base_link' frame)
+        # ความเร็วในมุมมองหุ่น (Local) แบบ Diff-Drive ไม่ไถลข้าง แกน Y จึงเป็น 1e-5 ได้
+        twist_cov = [0.0] * 36
+        twist_cov[0]  = 0.01 if self.kinematic_model == 'diff_drive' else 0.001  # Local X (Forward)
+        twist_cov[7]  = 1e-5 if self.kinematic_model == 'diff_drive' else 0.001  # Local Y (Lateral/Slip)
+        twist_cov[14] = 1e-5 # Local Z
+        twist_cov[21] = 1e-5 # Roll
+        twist_cov[28] = 1e-5 # Pitch
+        twist_cov[35] = 0.01 # Yaw
+        odom.twist.covariance = twist_cov
         
         self.odom_pub.publish(odom)
 

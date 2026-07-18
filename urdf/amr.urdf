@@ -30,4 +30,17 @@
     <child link="laser_link"/>
     <origin xyz="0.2 0 0.25" rpy="0 0 0"/> </joint>
 
+  <!-- ============================================================ -->
+  <!--  AMR 2D SIMULATOR CONFIG — reference template for new URDFs  -->
+  <!--    wheel_base   = distance between left/right drive wheels   -->
+  <!--    robot_radius = collision radius (half-diagonal or custom)  -->
+  <!-- ============================================================ -->
+  <amr_sim_config>
+    <kinematic_model>diff_drive</kinematic_model>
+    <wheel_base>0.5</wheel_base>
+    <robot_radius>0.35</robot_radius>
+    <laser_range_max>12.0</laser_range_max>
+    <ticks_per_meter>1000.0</ticks_per_meter>
+  </amr_sim_config>
+
 </robot>

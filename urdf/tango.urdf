@@ -7,12 +7,20 @@
   - Body: 30x30 cm square (0.3 x 0.3 m)
   - Corner Fillets: 3 cm radius (0.03 m)
   - Height: 10 cm (0.1 m)
-  - LiDAR: Front center, half way (x=0.075, y=0, z=0.125 from base_link)
+  - LiDAR: Front center, half way (x=-0.025 from base_link)
   - Drive System: DIFFERENTIAL DRIVE
       • Front Left  (FL) : DRIVE wheel (continuous joint)
       • Front Right (FR) : DRIVE wheel (continuous joint)
       • Rear Left   (RL) : FREE / Caster wheel (continuous passive)
       • Rear Right  (RR) : FREE / Caster wheel (continuous passive)
+
+  X-AXIS ORIGIN CONVENTION (ROS diff_drive standard):
+    base_link origin = DRIVE AXLE center (kinematic pivot point / ICC)
+    All X offsets are measured from the drive axle:
+      Drive wheels (FL/FR)  x =  0.000  (at drive axle)
+      Body geometric center x = -0.100  (100 mm behind drive axle)
+      LiDAR                 x = -0.025  (75 mm ahead of body center → 25 mm behind axle)
+      Caster wheels (RL/RR) x = -0.200  (200 mm behind drive axle)
 
   Z-AXIS ORIGIN CONVENTION (base_link = ground plane):
     - Wheel radius   = 0.040 m  → wheel centers at z = 0.040
@@ -22,12 +30,12 @@
     - LiDAR center   = z = 0.140 + 0.025 = 0.165
   ================================================================
 
-  DRIVE LAYOUT (top view):
+  DRIVE LAYOUT (top view, relative to base_link = drive axle):
          FRONT (+X) →
        ___________
-  [FL]/           \[FR]   ← DRIVE WHEELS (motor powered)
+  [FL]/           \[FR]   ← DRIVE WHEELS at x=0.000 (drive axle = base_link)
      |   TANGO    |
-  [RL]\___________/[RR]   ← FREE WHEELS  (passive casters)
+  [RL]\___________/[RR]   ← FREE WHEELS  at x=-0.200 (casters)
 
   Differential drive control:
     - Turn LEFT  : FL slower than FR
@@ -81,25 +89,27 @@
     <parent link="base_footprint"/>
     <child link="base_link"/>
     <!--
-      base_link origin is at ground level (z=0).
-      Body visual is offset upward by wheel radius (0.040) + half body (0.050)
+      base_link origin is at the drive axle, ground level (z=0).
+      base_footprint is co-located (both at drive axle ground point).
     -->
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>
 
   <!-- ============================================================ -->
   <!--                        BASE LINK                             -->
-  <!--  Origin at ground level center of robot footprint            -->
+  <!--  Origin = drive axle center at ground level                  -->
+  <!--  (ROS diff_drive convention: ICC = base_link origin)         -->
   <!-- ============================================================ -->
 
   <link name="base_link">
 
     <!-- === MAIN BODY BOX ===
+         Body geometric center is 100 mm BEHIND drive axle (x = -0.100)
          Bottom of body = wheel radius = 0.040 m above ground
          Body center z  = 0.040 + 0.050 = 0.090 m
     -->
     <visual>
-      <origin xyz="0 0 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.100 0 0.090" rpy="0 0 0"/>
       <geometry>
         <box size="0.300 0.300 0.100"/>
       </geometry>
@@ -108,41 +118,42 @@
 
     <!--
       FILLET CORNER CYLINDERS:
-      Placed at each corner (±0.120, ±0.120) to visually round body edges.
+      Corners at (body_center_x ± 0.120, ±0.120) = (-0.100 ± 0.120, ±0.120)
+        Front corners: x = -0.100 + 0.120 = +0.020
+        Rear  corners: x = -0.100 - 0.120 = -0.220
       Radius = 0.030 m matches 3 cm fillet spec.
-      Same center-z as body (0.090).
     -->
 
-    <!-- Corner: FRONT LEFT (+X, +Y) -->
+    <!-- Corner: FRONT LEFT (+X side, +Y) -->
     <visual>
-      <origin xyz="0.120 0.120 0.090" rpy="0 0 0"/>
+      <origin xyz="0.020 0.120 0.090" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.030" length="0.100"/>
       </geometry>
       <material name="tango_body"/>
     </visual>
 
-    <!-- Corner: FRONT RIGHT (+X, -Y) -->
+    <!-- Corner: FRONT RIGHT (+X side, -Y) -->
     <visual>
-      <origin xyz="0.120 -0.120 0.090" rpy="0 0 0"/>
+      <origin xyz="0.020 -0.120 0.090" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.030" length="0.100"/>
       </geometry>
       <material name="tango_body"/>
     </visual>
 
-    <!-- Corner: REAR LEFT (-X, +Y) -->
+    <!-- Corner: REAR LEFT (-X side, +Y) -->
     <visual>
-      <origin xyz="-0.120 0.120 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.220 0.120 0.090" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.030" length="0.100"/>
       </geometry>
       <material name="tango_body"/>
     </visual>
 
-    <!-- Corner: REAR RIGHT (-X, -Y) -->
+    <!-- Corner: REAR RIGHT (-X side, -Y) -->
     <visual>
-      <origin xyz="-0.120 -0.120 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.220 -0.120 0.090" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.030" length="0.100"/>
       </geometry>
@@ -162,7 +173,7 @@
 
     <!-- X-axis cross bar (full length, narrow Y) -->
     <visual>
-      <origin xyz="0 0 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.100 0 0.090" rpy="0 0 0"/>
       <geometry>
         <box size="0.300 0.240 0.100"/>
       </geometry>
@@ -171,7 +182,7 @@
 
     <!-- Y-axis cross bar (full width, narrow X) -->
     <visual>
-      <origin xyz="0 0 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.100 0 0.090" rpy="0 0 0"/>
       <geometry>
         <box size="0.240 0.300 0.100"/>
       </geometry>
@@ -180,7 +191,7 @@
 
     <!-- === COLLISION (simple bounding box) === -->
     <collision>
-      <origin xyz="0 0 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.100 0 0.090" rpy="0 0 0"/>
       <geometry>
         <box size="0.300 0.300 0.100"/>
       </geometry>
@@ -191,10 +202,10 @@
       Ixx = (1/12)*8*(0.30²+0.10²) = (1/12)*8*0.1000 = 0.06667
       Iyy = (1/12)*8*(0.30²+0.10²) = (1/12)*8*0.1000 = 0.06667
       Izz = (1/12)*8*(0.30²+0.30²) = (1/12)*8*0.1800 = 0.12000
-      CoM at body center = z 0.090
+      CoM at body center = x=-0.100, z=0.090
     -->
     <inertial>
-      <origin xyz="0 0 0.090" rpy="0 0 0"/>
+      <origin xyz="-0.100 0 0.090" rpy="0 0 0"/>
       <mass value="8.0"/>
       <inertia
         ixx="0.06667" ixy="0.0" ixz="0.0"
@@ -208,7 +219,7 @@
   <!--                      LIDAR LINK                              -->
   <!-- ============================================================ -->
 
-  <link name="lidar_link">
+  <link name="laser_link">
 
     <!-- Main LiDAR Housing -->
     <visual>
@@ -261,16 +272,16 @@
   </link>
 
   <!-- LiDAR Joint
-    Parent origin (base_link) is at ground (z=0).
-    Body top = 0.040 (wheel radius) + 0.100 (body height) = 0.140 m
-    LiDAR cylinder center = body top + half lidar height = 0.140 + 0.025 = 0.165 m
-    x = +0.075 m (front half midpoint: 0 to 0.150)
-    y =  0.000 m (centered)
+    base_link origin = drive axle at ground.
+    Body front edge  = drive_axle + 0.150 = +0.150 from base_link
+    LiDAR at body front midpoint: body_center_x + 0.075 = -0.100 + 0.075 = -0.025
+    z: body top (0.140) + half lidar height (0.025) = 0.165 m
+    y = 0.000 (centered)
   -->
-  <joint name="lidar_joint" type="fixed">
+  <joint name="laser_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="lidar_link"/>
-    <origin xyz="0.075 0.000 0.165" rpy="0 0 0"/>
+    <child link="laser_link"/>
+    <origin xyz="-0.025 0.000 0.165" rpy="0 0 0"/>
   </joint>
 
   <!-- ============================================================ -->
@@ -278,8 +289,9 @@
   <!-- ============================================================ -->
   <!--
     ★ DRIVE WHEEL — motor actuated (diff_drive_controller)
-    Wheel center z = wheel radius = 0.040 m (sits on ground)
+    x = 0.000  (AT drive axle = base_link origin)
     y = +0.1625 m  (body half-width 0.150 + wheel half-width 0.0125)
+    z = 0.040 m (wheel radius)
   -->
 
   <link name="wheel_front_left_link">
@@ -328,7 +340,7 @@
   <joint name="wheel_front_left_joint" type="continuous">
     <parent link="base_link"/>
     <child link="wheel_front_left_link"/>
-    <origin xyz="0.100 0.1625 0.040" rpy="0 0 0"/>
+    <origin xyz="0.000 0.1625 0.040" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <dynamics damping="0.01" friction="0.1"/>
   </joint>
@@ -378,7 +390,7 @@
   <joint name="wheel_front_right_joint" type="continuous">
     <parent link="base_link"/>
     <child link="wheel_front_right_link"/>
-    <origin xyz="0.100 -0.1625 0.040" rpy="0 0 0"/>
+    <origin xyz="0.000 -0.1625 0.040" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <dynamics damping="0.01" friction="0.1"/>
   </joint>
@@ -437,7 +449,7 @@
   <joint name="wheel_rear_left_joint" type="continuous">
     <parent link="base_link"/>
     <child link="wheel_rear_left_link"/>
-    <origin xyz="-0.100 0.1625 0.040" rpy="0 0 0"/>
+    <origin xyz="-0.200 0.1625 0.040" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <dynamics damping="0.001" friction="0.01"/>
   </joint>
@@ -487,7 +499,7 @@
   <joint name="wheel_rear_right_joint" type="continuous">
     <parent link="base_link"/>
     <child link="wheel_rear_right_link"/>
-    <origin xyz="-0.100 -0.1625 0.040" rpy="0 0 0"/>
+    <origin xyz="-0.200 -0.1625 0.040" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <dynamics damping="0.001" friction="0.01"/>
   </joint>
@@ -563,5 +575,25 @@
       <robot_base_frame>base_link</robot_base_frame>
     </plugin>
   </gazebo>
+
+  <!-- ============================================================ -->
+  <!--        AMR 2D SIMULATOR CONFIG                               -->
+  <!--  Values derived from geometry defined above:                 -->
+  <!--    wheel_base   = y-offset of drive wheels × 2              -->
+  <!--                   = 0.1625 × 2 = 0.325 m                    -->
+  <!--    robot_radius = distance from drive axle to farthest point -->
+  <!--                   = rear edge (0.200) + half-width (0.150)  -->
+  <!--                   → worst case = sqrt(0.200²+0.150²) ≈ 0.250 -->
+  <!--    drive_axle_x = x of drive wheels in base_link frame       -->
+  <!--                   = 0.000 (at base_link origin per convention)-->
+  <!-- ============================================================ -->
+  <amr_sim_config>
+    <kinematic_model>diff_drive</kinematic_model>
+    <wheel_base>0.325</wheel_base>
+    <robot_radius>0.250</robot_radius>
+    <laser_range_max>12.0</laser_range_max>
+    <ticks_per_meter>1000.0</ticks_per_meter>
+    <drive_axle_x>0.000</drive_axle_x>
+  </amr_sim_config>
 
 </robot>

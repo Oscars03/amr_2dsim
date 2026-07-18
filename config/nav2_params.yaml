@@ -12,11 +12,11 @@
 amcl:
   ros__parameters:
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
-    alpha1: 0.2
-    alpha2: 0.2
-    alpha3: 0.2
-    alpha4: 0.2
-    alpha5: 0.1
+    alpha1: 0.02
+    alpha2: 0.02
+    alpha3: 0.02
+    alpha4: 0.02
+    alpha5: 0.02
     min_particles: 500
     max_particles: 3000
     pf_err: 0.05
@@ -44,9 +44,9 @@ amcl:
     initial_pose_x: 0.0
     initial_pose_y: 0.0
     initial_pose_a: 0.0
-    initial_cov_xx: 0.25
-    initial_cov_yy: 0.25
-    initial_cov_aa: 0.068
+    initial_cov_xx: 0.05
+    initial_cov_yy: 0.05
+    initial_cov_aa: 0.02
     save_pose_rate: 0.5
     tf_broadcast: true
     transform_tolerance: 0.5

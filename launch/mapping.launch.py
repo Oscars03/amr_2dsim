@@ -23,12 +23,7 @@ def generate_launch_description():
         }.items()
     )
 
-    laser_tf_node = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='laser_static_tf',
-        arguments=['0.2', '0', '0.25', '0', '0', '0', 'base_link', 'laser_link']
-    )
+
 
     # ย้าย RViz2 มาเปิดในไฟล์นี้
     rviz_node = Node(
@@ -39,7 +34,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        laser_tf_node,        
         slam_toolbox_launch,
         rviz_node  # <--- เพิ่มเข้ามาใน Launch Description
     ])
